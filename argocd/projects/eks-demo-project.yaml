@@ -1,0 +1,37 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: eks-demo
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: EKS Demo project for General Store application
+
+  # Allow deployments from this repo only
+  sourceRepos:
+    - "https://github.com/Aadityyaaaa-0410/eks-project.git"
+
+  # Allow deploying to the app namespace on the in-cluster server
+  destinations:
+    - namespace: app
+      server: https://kubernetes.default.svc
+    - namespace: argocd
+      server: https://kubernetes.default.svc
+
+  # Allow all core Kubernetes resources
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+
+  namespaceResourceWhitelist:
+    - group: "apps"
+      kind: Deployment
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: ConfigMap
+    - group: ""
+      kind: Secret
+    - group: "networking.k8s.io"
+      kind: Ingress

@@ -1,0 +1,27 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: backend
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: eks-demo
+
+  source:
+    repoURL: "https://github.com/Aadityyaaaa-0410/eks-project.git"
+    targetRevision: main
+    # Points to the backend k8s manifests folder
+    path: k8s/backend
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: app
+
+  syncPolicy:
+    automated:
+      prune: true       # Delete resources removed from Git
+      selfHeal: true    # Revert manual changes in cluster
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true

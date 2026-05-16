@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: app
+  labels:
+    app: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend
+          image: REPLACE_WITH_YOUR_ECR_IMAGE_URI:latest
+          ports:
+            - containerPort: 8080
+
+          # Non-sensitive config injected from ConfigMap
+          envFrom:
+            - configMapRef:
+                name: backend-config
+
+          # Sensitive config injected from Secret
+          env:
+            - name: APP_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secret
+                  key: APP_SECRET_KEY
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3

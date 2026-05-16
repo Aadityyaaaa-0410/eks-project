@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  namespace: app
+data:
+  PORT: "8080"
+  APP_NAME: "eks-demo-backend"
+  APP_ENV: "production"
+  # Update this to the NLB hostname after ingress is created.
+  # Get it with: kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+  ALLOWED_ORIGINS: "http://REPLACE_WITH_NLB_HOSTNAME"
