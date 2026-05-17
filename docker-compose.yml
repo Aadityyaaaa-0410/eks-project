@@ -1,0 +1,17 @@
+version: "3.9"
+
+services:
+  backend:
+    build: ./src/backend
+    container_name: backend-service
+    env_file: ./src/backend/.env
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build: ./src/frontend
+    container_name: frontend-service
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
