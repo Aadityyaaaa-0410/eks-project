@@ -31,7 +31,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="navbar">
-        <h1>Apnaa Store</h1>
+        <h1>Apna Store</h1>
 
         <div className="cart-box">
           🛒 {cart.length} items | ${total}
