@@ -62,7 +62,7 @@ app.get("/api/status", (_req, res) => {
       },
       {
         id: 4,
-        name: "Keyboard",
+        name: "Mechanical Keyboard",
         price: 149,
         image:
           "https://images.unsplash.com/photo-1511467687858-23d96c32e4ae?w=400&auto=format&fit=crop",
