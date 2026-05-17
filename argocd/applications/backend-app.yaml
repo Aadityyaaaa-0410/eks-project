@@ -10,7 +10,7 @@ spec:
 
   source:
     repoURL: "https://github.com/Aadityyaaaa-0410/eks-project.git"
-    targetRevision: main
+    targetRevision: master
     # Points to the backend k8s manifests folder
     path: k8s/backend
 
