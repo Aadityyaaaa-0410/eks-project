@@ -1,274 +1,346 @@
 # EKS Application Setup — General Store
 
-A full-stack web application deployed on Amazon EKS with proper Kubernetes resources, health checks, ingress access, GitOps via ArgoCD, and infrastructure provisioned through Terraform.
+A full-stack application deployed on Amazon Web Services using:
+
+* Amazon EKS (Auto Mode)
+* Terraform
+* ArgoCD (GitOps)
+* GitHub Actions CI/CD
+* Amazon ECR
+* NGINX Ingress Controller
 
 ---
 
-## Architecture
+# Architecture Overview
 
-```
-                        ┌─────────────────────────────────────────────┐
-                        │              AWS Cloud (us-east-1)           │
-                        │                                              │
-                        │   ┌──────────────────────────────────────┐  │
-  User Browser          │   │         EKS Cluster (Auto Mode)      │  │
-      │                 │   │                                       │  │
-      │  HTTP           │   │  ┌─────────────────────────────────┐ │  │
-      ▼                 │   │  │     Namespace: app              │ │  │
- ┌─────────┐            │   │  │                                 │ │  │
- │   NLB   │◄───────────┤   │  │  ┌────────────┐                │ │  │
- │(NGINX   │            │   │  │  │  Ingress   │                │ │  │
- │Ingress) │            │   │  │  │ (nginx)    │                │ │  │
- └────┬────┘            │   │  │  └─────┬──────┘                │ │  │
-      │                 │   │  │        │                        │ │  │
-      │  /              │   │  │   ┌────┴────────────────┐       │ │  │
-      ├─────────────────┼───┼──┼──►│  frontend-service   │       │ │  │
-      │                 │   │  │   │  (ClusterIP :80)    │       │ │  │
-      │  /health        │   │  │   └────────┬────────────┘       │ │  │
-      │  /api/*         │   │  │            │                    │ │  │
-      ├─────────────────┼───┼──┼──►┌────────┴────────────┐       │ │  │
-                        │   │  │   │  backend-service     │       │ │  │
-                        │   │  │   │  (ClusterIP :8080)  │       │ │  │
-                        │   │  │   └─────────────────────┘       │ │  │
-                        │   │  │                                 │ │  │
-                        │   │  │  ┌─────────────┐               │ │  │
-                        │   │  │  │  ConfigMap  │ PORT,APP_NAME  │ │  │
-                        │   │  │  │             │ APP_ENV,       │ │  │
-                        │   │  │  │             │ ALLOWED_ORIGINS│ │  │
-                        │   │  │  └─────────────┘               │ │  │
-                        │   │  │  ┌─────────────┐               │ │  │
-                        │   │  │  │   Secret    │ BACKEND_API_KEY│ │  │
-                        │   │  │  └─────────────┘               │ │  │
-                        │   │  └─────────────────────────────────┘ │  │
-                        │   │                                       │  │
-                        │   │  ┌──────────────┐  ┌──────────────┐  │  │
-                        │   │  │   ArgoCD     │  │ingress-nginx │  │  │
-                        │   │  │  (argocd ns) │  │  controller  │  │  │
-                        │   │  └──────────────┘  └──────────────┘  │  │
-                        │   └──────────────────────────────────────┘  │
-                        │                                              │
-                        │   ┌──────────────────────────────────────┐  │
-                        │   │  VPC  (10.0.0.0/16)                  │  │
-                        │   │  Public Subnets  (NLB, NAT GW)       │  │
-                        │   │  Private Subnets (EKS nodes)         │  │
-                        │   └──────────────────────────────────────┘  │
-                        └─────────────────────────────────────────────┘
-
-                        ┌─────────────────────────────────────────────┐
-                        │  GitOps Flow                                 │
-                        │                                              │
-                        │  Git Push → ArgoCD detects change            │
-                        │          → Syncs k8s/backend/ manifests      │
-                        │          → Syncs k8s/frontend/ manifests     │
-                        └─────────────────────────────────────────────┘
-```
+* Frontend: React + Vite + NGINX
+* Backend: Express.js API
+* Kubernetes: Amazon EKS
+* Ingress: ingress-nginx + AWS NLB
+* GitOps: ArgoCD
+* IaC: Terraform
+* Registry: Amazon ECR
 
 ---
 
-## Project Structure
+# Project Structure
 
-```
+```bash
 EKS-Task/
 ├── src/
-│   ├── backend/          # Express.js API (Node 18)
-│   └── frontend/         # React + Vite + nginx
+│   ├── backend/
+│   └── frontend/
 ├── k8s/
 │   ├── namespace.yaml
 │   ├── backend/
-│   │   ├── configmap.yaml
-│   │   ├── secret.yaml
-│   │   ├── deployment.yaml
-│   │   └── service.yaml
 │   └── frontend/
-│       ├── deployment.yaml
-│       ├── service.yaml
-│       └── ingress.yaml
 ├── argocd/
 │   ├── projects/
-│   │   └── eks-demo-project.yaml
 │   └── applications/
-│       ├── backend-app.yaml
-│       └── frontend-app.yaml
 ├── terraform/
-│   ├── main.tf            # VPC + EKS
-│   ├── addons.tf          # NGINX ingress + cert-manager
-│   ├── argocd.tf          # ArgoCD helm install + CRD bootstrap
-│   ├── variables.tf
-│   ├── locals.tf
-│   ├── outputs.tf
-│   ├── security.tf
-│   └── versions.tf
-└── docker-compose.yml     # Local development
+└── .github/workflows/
 ```
 
 ---
 
-## What Gets Deployed
+# Prerequisites
 
-| Resource | Details |
-|---|---|
-| Namespace | `app` |
-| Backend Deployment | 2 replicas, Express on port 8080 |
-| Frontend Deployment | 2 replicas, nginx on port 80 |
-| Backend Service | ClusterIP — not exposed directly |
-| Frontend Service | ClusterIP — not exposed directly |
-| Ingress | NGINX ingress class, routes `/health` + `/api/*` → backend, `/` → frontend |
-| ConfigMap | `PORT`, `APP_NAME`, `APP_ENV`, `ALLOWED_ORIGINS` |
-| Secret | `BACKEND_API_KEY` (see secret.yaml for MongoDB example) |
-| Liveness Probe | `/health` on both pods |
-| Readiness Probe | `/health` on both pods |
-| Resource Limits | CPU + memory requests and limits on all containers |
+Install and configure:
 
----
+* AWS CLI
+* kubectl
+* Terraform >= 1.0
+* Docker
+* Helm
 
-## Setup Steps
-
-### Prerequisites
-- AWS CLI configured
-- Terraform >= 1.0
-- kubectl
-- Docker
-- eksctl (optional)
-
----
-
-### 1. Build and Push Docker Images
+Configure AWS credentials:
 
 ```bash
-# Authenticate to ECR
-aws ecr get-login-password --region us-east-1 | \
-  docker login --username AWS --password-stdin <account-id>.dkr.ecr.us-east-1.amazonaws.com
-
-# Backend
-docker build -t backend ./src/backend
-docker tag backend:latest <account-id>.dkr.ecr.us-east-1.amazonaws.com/backend:latest
-docker push <account-id>.dkr.ecr.us-east-1.amazonaws.com/backend:latest
-
-# Frontend
-docker build -t frontend ./src/frontend
-docker tag frontend:latest <account-id>.dkr.ecr.us-east-1.amazonaws.com/frontend:latest
-docker push <account-id>.dkr.ecr.us-east-1.amazonaws.com/frontend:latest
+aws configure
 ```
 
 ---
 
-### 2. Update Image URIs
+# Step 1 — Build and Push Docker Images to ECR
 
-Edit both deployment files with your ECR URIs:
-- `k8s/backend/deployment.yaml`
-- `k8s/frontend/deployment.yaml`
+## Authenticate Docker to ECR
+
+```bash
+aws ecr get-login-password --region us-east-1 | \
+docker login --username AWS --password-stdin <account-id>.dkr.ecr.us-east-1.amazonaws.com
+```
 
 ---
 
-### 3. Provision Infrastructure with Terraform
+## Backend Image
+
+```bash
+docker build -t backend ./src/backend
+
+docker tag backend:latest \
+<account-id>.dkr.ecr.us-east-1.amazonaws.com/backend:latest
+
+docker push \
+<account-id>.dkr.ecr.us-east-1.amazonaws.com/backend:latest
+```
+
+---
+
+## Frontend Image
+
+```bash
+docker build -t frontend ./src/frontend
+
+docker tag frontend:latest \
+<account-id>.dkr.ecr.us-east-1.amazonaws.com/frontend:latest
+
+docker push \
+<account-id>.dkr.ecr.us-east-1.amazonaws.com/frontend:latest
+```
+
+---
+
+# Step 2 — Update Image URIs
+
+Update image paths inside:
+
+```bash
+k8s/backend/deployment.yaml
+k8s/frontend/deployment.yaml
+```
+
+Replace with your ECR image URIs.
+
+---
+
+# Step 3 — Provision Infrastructure with Terraform
+
+Navigate to terraform directory:
 
 ```bash
 cd terraform
+```
 
-# Phase 1 — VPC + EKS
+---
+
+## Initialize Terraform
+
+```bash
 terraform init
-terraform apply -target=module.vpc -target=module.eks_demo --auto-approve
+```
 
-# Configure kubectl
-aws eks update-kubeconfig --region us-east-1 --name <cluster-name>
+---
 
-# Phase 2 — Addons (NGINX ingress, cert-manager)
-terraform apply -target=module.eks_addons --auto-approve
+## Create VPC + EKS Cluster
 
-# Phase 3 — ArgoCD + bootstrap CRDs
+```bash
+terraform apply \
+-target=module.vpc \
+-target=module.eks_demo \
+--auto-approve
+```
+
+
+# Step 4 — Install ArgoCD + Bootstrap Applications + Add-ons
+
+```bash
 terraform apply --auto-approve
 ```
 
----
+This installs:
 
-### 4. Update ArgoCD Application Files
-
-Replace `YOUR_GITHUB_USERNAME` in:
-- `argocd/projects/eks-demo-project.yaml`
-- `argocd/applications/backend-app.yaml`
-- `argocd/applications/frontend-app.yaml`
-
-Push to Git — ArgoCD will auto-sync and apply all manifests in `k8s/`.
+* ArgoCD
+* AppProject CRDs
+* Application CRDs
+* And other Add-ons 
 
 ---
 
-### 5. Access ArgoCD UI
+
+# Step 5 — Configure kubectl
 
 ```bash
-# Get admin password
-kubectl -n argocd get secret argocd-initial-admin-secret \
-  -o jsonpath='{.data.password}' | base64 -d
+aws eks update-kubeconfig \
+--region us-east-1 \
+--name <cluster-name>
+```
 
-# Port-forward
-kubectl port-forward svc/argocd-server -n argocd 8080:443
-# Open https://localhost:8080  (admin / <password above>)
+Verify cluster:
+
+```bash
+kubectl get nodes
 ```
 
 ---
 
-### 6. Get the Application URL
+
+# Step 6 — Update ArgoCD Repository References
+
+Update GitHub username/repository references inside:
+
+```bash
+argocd/projects/
+argocd/applications/
+```
+
+Push changes to GitHub.
+
+ArgoCD will automatically sync manifests from:
+
+```bash
+k8s/
+```
+
+---
+
+# Step 8 — Access ArgoCD UI
+
+## Get Admin Password
+
+```bash
+kubectl -n argocd get secret argocd-initial-admin-secret \
+-o jsonpath='{.data.password}' | base64 -d
+```
+
+---
+
+## Port Forward ArgoCD
+
+```bash
+kubectl port-forward svc/argocd-server \
+-n argocd 8080:443
+```
+
+Username:
+
+```bash
+admin
+```
+
+Password:
+
+```bash
+<output-from-previous-command>
+```
+
+---
+
+# Step 9 — Get Application URL
 
 ```bash
 kubectl get svc -n ingress-nginx ingress-nginx-controller \
-  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+-o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+```
+
+Open:
+
+```bash
+http://<NLB-hostname>
 ```
 
 ---
 
-## Verification Commands
+# Verification Commands
+
+## Nodes
 
 ```bash
-# Nodes
 kubectl get nodes
+```
 
-# Pods
+---
+
+## Pods
+
+```bash
 kubectl get pods -n app
+```
 
-# Services
+---
+
+## Services
+
+```bash
 kubectl get svc -n app
+```
 
-# Ingress
+---
+
+## Ingress
+
+```bash
 kubectl get ingress -n app
+```
 
-# Describe a pod
+---
+
+## Describe Pod
+
+```bash
 kubectl describe pod <pod-name> -n app
+```
 
-# Health check via ingress
+---
+
+## Health Check
+
+```bash
 curl http://<NLB-hostname>/health
+```
 
-# API status via ingress
+---
+
+## API Status
+
+```bash
 curl http://<NLB-hostname>/api/status
 ```
 
 ---
 
-## Local Development
+# GitOps Flow
 
-```bash
-docker-compose up --build
-# Frontend: http://localhost
-# Backend:  http://localhost:8080
+```text
+Git Push
+   ↓
+GitHub Actions
+   ↓
+Build Docker Image
+   ↓
+Push to ECR
+   ↓
+Update Kubernetes Manifests
+   ↓
+ArgoCD Detects Change
+   ↓
+Auto Sync to EKS
 ```
 
 ---
 
-## Known Issues / Assumptions
+# Features Implemented
 
-- `ALLOWED_ORIGINS` in the ConfigMap has no functional effect in this setup because nginx proxies requests server-to-server (no browser Origin header). It is kept for documentation and future use.
-- `BACKEND_API_KEY` is a placeholder value. Replace with a strong random secret before any real deployment.
-- EKS Auto Mode is used — no manual node group management needed.
-- Single NAT Gateway is used to reduce cost (`enable_single_nat_gateway = true`). Use `false` for production.
-- ArgoCD is accessed via port-forward only. For production, expose it via an Ingress with TLS.
+* Amazon EKS Auto Mode
+* Terraform Infrastructure Provisioning
+* ArgoCD GitOps
+* GitHub Actions CI/CD
+* Amazon ECR Integration
+* NGINX Ingress Controller
+* ConfigMap & Secrets
+* Liveness & Readiness Probes
+* Resource Requests & Limits
+* Path-based Routing
+* Private EKS Nodes
 
 ---
 
-## What I Would Improve for Production
+# Production Improvements
 
-- Add TLS via cert-manager (Let's Encrypt) on the Ingress
-- Use AWS Secrets Manager or External Secrets Operator instead of raw K8s Secrets
-- Add a proper MongoDB or RDS database with credentials in Secrets
-- Set up a CI/CD pipeline (GitHub Actions) to build, push images, and update image tags automatically
-- Enable EKS cluster logging to CloudWatch
-- Add Horizontal Pod Autoscaler (HPA) on both deployments
-- Use multiple NAT Gateways across AZs for high availability
-- Add network policies to restrict pod-to-pod traffic
+* TLS with cert-manager + Let's Encrypt
+* External Secrets Operator / AWS Secrets Manager
+* Horizontal Pod Autoscaler (HPA)
+* Monitoring with Prometheus + Grafana
+* Multi-AZ NAT Gateway
+* RDS / MongoDB Integration
+* WAF + CloudFront
+* Network Policies
