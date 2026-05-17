@@ -28,11 +28,17 @@ spec:
 
           # Sensitive config injected from Secret
           env:
-            - name: APP_SECRET_KEY
+            - name: BACKEND_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: backend-secret
-                  key: APP_SECRET_KEY
+                  key: BACKEND_API_KEY 
+
+  #         - name: MONGO_URI
+  #           valueFrom:
+  #             secretKeyRef:
+  #               name: backend-secret
+  #               key: MONGO_URI      
 
           resources:
             requests:
